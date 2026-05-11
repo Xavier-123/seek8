@@ -219,9 +219,11 @@ def select_examples(all_examples: list[dict], task_description: str, text2annota
     target_length = 8192  # 若需严格适配Qwen3-4B，建议改为8192（8k）
 
     # 使用动态few-shot检索，按与当前待标注文本的相似度对示例排序，优先选取最相关的示例
+    if not all_examples:
+        return ""
     target_sample = {"input": text2annotate}
     ranked_examples = retrieve_dynamic_few_shots(target_sample, all_examples, k=len(all_examples))
-    # 若检索结果为空（如pool为空），回退到原始顺序
+    # 若检索结果为空（如所有示例均无output），回退到原始顺序
     if not ranked_examples:
         ranked_examples = all_examples
 
@@ -379,11 +381,13 @@ def select_n_examples(all_examples: list[dict], task_description: str, text2anno
     target_length = 8192
 
     # 使用动态few-shot检索，按与当前待标注文本的相似度对候选示例排序，
-    # 检索数量适当放大（n_samples * 3）以确保token过滤后仍有足够的候选
+    # 检索数量适当放大（n_samples 的3倍）以确保经token长度过滤后仍有足够的候选可选
+    if not all_examples:
+        return ""
     target_sample = {"input": text2annotate}
     candidate_k = min(len(all_examples), n_samples * 3)
     ranked_examples = retrieve_dynamic_few_shots(target_sample, all_examples, k=candidate_k)
-    # 若检索结果为空（如pool为空），回退到原始顺序
+    # 若检索结果为空（如所有示例均无output），回退到原始顺序
     if not ranked_examples:
         ranked_examples = all_examples
 
