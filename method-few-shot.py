@@ -218,11 +218,18 @@ def select_examples(all_examples: list[dict], task_description: str, text2annota
     # 最大上下文长度限制（Qwen3-4B的上下文窗口默认是8k/32k，可根据实际调整）
     target_length = 8192  # 若需严格适配Qwen3-4B，建议改为8192（8k）
 
+    # 使用动态few-shot检索，按与当前待标注文本的相似度对示例排序，优先选取最相关的示例
+    target_sample = {"input": text2annotate}
+    ranked_examples = retrieve_dynamic_few_shots(target_sample, all_examples, k=len(all_examples))
+    # 若检索结果为空（如pool为空），回退到原始顺序
+    if not ranked_examples:
+        ranked_examples = all_examples
+
     # print(all_examples[0])  # 打印第一个示例，便于调试
 
     examples_str, token_num = "", 0
-    # 遍历所有示例，基于Qwen3-4B的tokenizer计算token数
-    for i, example in enumerate(all_examples):
+    # 遍历按相似度排序后的示例，基于Qwen3-4B的tokenizer计算token数
+    for i, example in enumerate(ranked_examples):
         try:
             # 提取input和output（兼容output是列表的情况）
             input_text = example['input']
@@ -371,9 +378,18 @@ def select_n_examples(all_examples: list[dict], task_description: str, text2anno
     # 最大上下文长度限制
     target_length = 8192
 
+    # 使用动态few-shot检索，按与当前待标注文本的相似度对候选示例排序，
+    # 检索数量适当放大（n_samples * 3）以确保token过滤后仍有足够的候选
+    target_sample = {"input": text2annotate}
+    candidate_k = min(len(all_examples), n_samples * 3)
+    ranked_examples = retrieve_dynamic_few_shots(target_sample, all_examples, k=candidate_k)
+    # 若检索结果为空（如pool为空），回退到原始顺序
+    if not ranked_examples:
+        ranked_examples = all_examples
+
     examples_str, token_num, selected_count = "", 0, 0
-    # 遍历所有示例，基于Qwen3-4B的tokenizer计算token数
-    for i, example in enumerate(all_examples):
+    # 遍历按相似度排序后的示例，基于Qwen3-4B的tokenizer计算token数
+    for i, example in enumerate(ranked_examples):
         if selected_count >= n_samples:
             # 已经选够指定数量的示例，返回
             return examples_str
