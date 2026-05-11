@@ -58,6 +58,68 @@ def retrieve_dynamic_few_shots(target_sample: dict, pool: list[dict], k: int = 5
     scored_pool.sort(key=lambda x: x[0], reverse=True)
     return [item[1] for item in scored_pool[:k]]
 
+
+def parse_task8_examples(examples: str) -> list[dict]:
+    """
+    将 Task8 examples 字符串解析为可检索的样本池（input/output）。
+    期望片段格式：`... <label> ... </label>`。
+    """
+    if not examples or not examples.strip():
+        return []
+
+    pool = []
+    cursor = 0
+    idx = 0
+    open_tag = "<label>"
+    close_tag = "</label>"
+
+    while True:
+        start = examples.find(open_tag, cursor)
+        if start == -1:
+            break
+        end = examples.find(close_tag, start + len(open_tag))
+        if end == -1:
+            break
+
+        input_chunk = examples[cursor:start].strip()
+        output_chunk = examples[start + len(open_tag):end].strip()
+
+        input_lines = [line.strip() for line in input_chunk.splitlines() if line.strip()]
+        input_text = input_lines[-1] if input_lines else ""
+        input_text = re.sub(r'^[-*#\d\.\)\s]+', '', input_text).strip()
+
+        if input_text and output_chunk:
+            pool.append({
+                "id": f"task8-fs-{idx}",
+                "input": input_text,
+                "output": output_chunk,
+            })
+            idx += 1
+
+        cursor = end + len(close_tag)
+
+    return pool
+
+
+def build_task8_dynamic_examples(examples: str, annotate_text: str, top_k: int = 5) -> str:
+    """
+    基于 annotate_text 动态检索 Task8 few-shot 示例，返回格式化后的 examples 字符串。
+    失败时返回空串，由调用方回退到原始 examples。
+    """
+    pool = parse_task8_examples(examples)
+    if not pool:
+        return ""
+
+    target_sample = {"id": "task8-target", "input": annotate_text}
+    ranked = retrieve_dynamic_few_shots(target_sample, pool, k=min(top_k, len(pool)))
+    if not ranked:
+        return ""
+
+    dynamic_examples = []
+    for ex in ranked:
+        dynamic_examples.append(f"- {ex['input']} <label>\n{ex['output']}\n</label>")
+    return "\n".join(dynamic_examples)
+
 # ======================================================
 
 def build_prompt____(task_description: str, text2annotate: str) -> str:
@@ -779,8 +841,10 @@ def annotate_nanobot_task8(task: str, annotate_text: str, task_id: int = 8, exam
     max_iterations = 5
     feedback_history = []
 
-    # 固定部分只构建一次
-    examples_prompt = f"## Reference Examples\n{examples}\n" if examples.strip() else ""
+    # 固定部分只构建一次：先尝试动态 few-shot，失败再回退原始 examples
+    dynamic_examples = build_task8_dynamic_examples(examples, annotate_text, top_k=5)
+    selected_examples = dynamic_examples if dynamic_examples.strip() else examples
+    examples_prompt = f"## Reference Examples\n{selected_examples}\n" if selected_examples.strip() else ""
     rules_prompt = f"## Task Rules\n{rules}\n" if rules.strip() else ""
 
     while iteration < max_iterations and final_code is None:
