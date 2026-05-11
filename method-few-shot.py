@@ -8,9 +8,23 @@ from transformers import AutoTokenizer
 
 # ================= 动态 Few-Shot 检索 =================
 
-def tokenize(text: str) -> set:
-    """简单的分词器，用于文本描述的关键词 Overlap 匹配"""
-    return set(re.findall(r'\b\w+\b', str(text).lower()))
+# 常见英文无意义连接词 / 停用词
+STOP_WORDS = {
+    'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'of',
+    'for', 'with', 'is', 'are', 'was', 'were', 'be', 'been', 'have', 'has',
+    'i', 'you', 'he', 'she', 'it', 'we', 'they', 'me', 'him', 'her', 'my',
+    'your', 'this', 'that', 'these', 'those'
+}
+
+def tokenize(text):
+    """纯手写分词器：提取单词 + 过滤无意义连接词"""
+    words = re.findall(r'\b\w+\b', text.lower())
+    filtered = [w for w in words if w not in STOP_WORDS]
+    return set(filtered)
+
+# def tokenize(text: str) -> set:
+#     """简单的分词器，用于文本描述的关键词 Overlap 匹配"""
+#     return set(re.findall(r'\b\w+\b', str(text).lower()))
 
 
 def retrieve_dynamic_few_shots(target_sample: dict, pool: list[dict], k: int = 5) -> list[dict]:
